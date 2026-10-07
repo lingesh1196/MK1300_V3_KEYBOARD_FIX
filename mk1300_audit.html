@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>MK1300 V2 key audit</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:system-ui,sans-serif;background:#10131a;color:#e8ecf4;max-width:860px;margin:26px auto;padding:0 16px;line-height:1.5}
+.box{background:#1a1f2b;border:1px solid #2c3446;border-radius:10px;padding:16px;margin:14px 0}
+button{font-size:17px;padding:11px 20px;border:0;border-radius:8px;background:#7f6cff;color:#fff;cursor:pointer;margin:4px 8px 4px 0}
+textarea{width:100%;height:300px;background:#0b0e14;color:#9dffb8;border:1px solid #2c3446;border-radius:8px;padding:10px;font-family:monospace;font-size:13px;box-sizing:border-box}
+table{border-collapse:collapse;font-size:13px;margin:8px 0}td,th{border:1px solid #2c3446;padding:3px 8px;text-align:left}
+.ok{color:#7be0a0}.empty{color:#ffcc66}.bad{color:#ff8a8a;font-weight:bold}.dim{color:#8892a6}
+</style></head><body>
+<h1>MK1300 V2 key audit (read only)</h1>
+<div class="box"><p>Reads the Base layer (0) and the Fn layer (1) and lists every key as OK, EMPTY (unassigned) or WRONG/UNKNOWN. It writes nothing. Use Chrome or Edge.</p>
+<button id="go">Connect and audit</button><button id="copy">Copy summary</button></div>
+<div id="tbl"></div>
+<textarea id="out" readonly placeholder="Summary shows here..."></textarea>
+<script>
+const KEYS=[[0, "Esc", 32, 41], [1, "1", 32, 30], [2, "2", 32, 31], [3, "3", 32, 32], [4, "4", 32, 33], [5, "5", 32, 34], [6, "6", 32, 35], [7, "7", 32, 36], [8, "8", 32, 37], [9, "9", 32, 38], [10, "0", 32, 39], [11, "?\n* \\", 32, 45], [12, "_\n- ", 32, 46], [13, "Back", 32, 42], [15, "Tab", 32, 43], [16, "Q", 32, 20], [17, "W", 32, 26], [18, "E", 32, 8], [19, "R", 32, 21], [20, "T", 32, 23], [21, "Y", 32, 28], [22, "U", 32, 24], [23, "I", 32, 12], [24, "O", 32, 18], [25, "P", 32, 19], [26, "[  {", 32, 47], [27, "}  ]", 32, 48], [28, "\\", 32, 49], [30, "Caps", 32, 57], [31, "A", 32, 4], [32, "S", 32, 22], [33, "D", 32, 7], [34, "F", 32, 9], [35, "G", 32, 10], [36, "H", 32, 11], [37, "J", 32, 13], [38, "K", 32, 14], [39, "L", 32, 15], [40, ";", 32, 51], [41, "'", 32, 52], [43, "Enter", 32, 40], [45, "Shift", 32, 225], [47, "Z", 32, 29], [48, "X", 32, 27], [49, "C", 32, 6], [50, "V", 32, 25], [51, "B", 32, 5], [52, "N", 32, 17], [53, "M", 32, 16], [54, ",  <", 32, 54], [55, ".  >", 32, 55], [56, "/  ?", 32, 56], [58, "Shift", 32, 229], [60, "Ctrl", 32, 256], [61, "Win", 32, 2048], [62, "Alt", 32, 1024], [66, "Space", 32, 44], [70, "Alt Gr", 32, 230], [71, "Fn", 32, 255], [72, "Lighting", 31, 3], [73, "Ctrl", 32, 228]]; // [index,name,type,code]
+const HID={};
+"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((c,i)=>HID[4+i]=c);
+"1234567890".split("").forEach((c,i)=>HID[30+i]=c);
+Object.assign(HID,{40:"Enter",41:"Esc",42:"Backspace",43:"Tab",44:"Space",45:"-",46:"=",47:"[",48:"]",49:"\\",51:";",52:"'",53:"`",54:",",55:".",56:"/",57:"Caps",70:"PrtSc",71:"ScrLk",72:"Pause",73:"Insert",74:"Home",75:"PgUp",76:"Delete",77:"End",78:"PgDn",79:"Right",80:"Left",81:"Down",82:"Up",255:"Fn"});
+for(let i=0;i<12;i++)HID[58+i]="F"+(i+1);
+const MODS=[[1,"LCtrl"],[2,"LShift"],[4,"LAlt"],[8,"LWin"],[16,"RCtrl"],[32,"RShift"],[64,"RAlt"],[128,"RWin"]];
+const FN={0:"LightSwitch",1:"Bright+",2:"Bright-",3:"EffectSwitch",4:"ColorSwitch",5:"Speed+",6:"Speed-",7:"WinLock",16:"ResetKeyboard",19:"ProfileSwitch",20:"Direction",25:"LockKeyboard",60:"WhiteLight"};
+function decode(f){
+  if(f.every(v=>v==0))return["EMPTY","empty",""];
+  if(f[0]==31)return["FUNCTION","ok",FN[f[1]]||("function "+f[1])];
+  if(f[0]==32){
+    if(f[1]==0&&f[3]==0&&HID[f[2]])return["KEY","ok",HID[f[2]]];
+    if(f[2]==0&&f[3]==0&&f[1]!=0){const m=MODS.filter(x=>f[1]&x[0]).map(x=>x[1]);if(m.length)return["MODIFIER","ok",m.join("+")]}
+    return["WRONG","bad","odd key data"];
+  }
+  return["UNKNOWN","bad","type "+f[0]+" (could be macro/media, check)"];
+}
+const out=document.querySelector("#out");let dev=null;
+document.querySelector("#copy").onclick=async()=>{try{await navigator.clipboard.writeText(out.value)}catch(e){out.select();document.execCommand("copy")}};
+function xfer(p){return new Promise(async(res,rej)=>{
+  const r=new Uint8Array(64);r[0]=6;p.forEach((v,i)=>{r[1+i]=v});let done=false;
+  const h=e=>{if(done)return;done=true;dev.removeEventListener("inputreport",h);res(new Uint8Array(e.data.buffer))};
+  dev.addEventListener("inputreport",h);
+  try{await dev.sendReport(0,r)}catch(err){dev.removeEventListener("inputreport",h);return rej(err)}
+  setTimeout(()=>{if(!done){done=true;dev.removeEventListener("inputreport",h);rej(new Error("no reply"))}},1500);
+});}
+async function readLayer(l){const d=new Uint8Array(320);
+  for(let e=0;e<6;e++){const off=56*e;const rep=await xfer([8,58,off&255,off>>8&255,0,l]);
+    for(let i=0;i<56&&off+i<d.length;i++)d[off+i]=rep[8+i]||0;}return d;}
+document.querySelector("#go").onclick=async()=>{
+  out.value="";document.querySelector("#tbl").innerHTML="";
+  try{
+    if(!navigator.hid)throw new Error("Use Chrome or Edge");
+    const d=await navigator.hid.requestDevice({filters:[{vendorId:0x36AE,usagePage:0xFF00,usage:0x02}]});
+    if(!d.length)throw new Error("No device selected");
+    dev=d[0];if(!dev.opened)await dev.open();
+    const layers=[await readLayer(0),await readLayer(1)];
+    const names=["Base layer (0)","Fn layer (1)"];
+    let html="",sum="";
+    layers.forEach((data,L)=>{
+      let rows="",empty=[],bad=[],okc=0;
+      for(const [idx,name] of KEYS){
+        const f=Array.from(data.slice(4*idx,4*idx+4));
+        const [kind,cls,what]=decode(f);
+        const nm=name.replace(/\n/g," ");
+        if(kind=="EMPTY")empty.push(nm);else if(cls=="bad")bad.push(nm+" ["+f.join(",")+"]");else okc++;
+        rows+=`<tr><td>${idx}</td><td>${nm.replace(/</g,"&lt;")}</td><td>${f.join(",")}</td><td class="${cls}">${kind}</td><td>${what}</td></tr>`;
+      }
+      html+=`<h3>${names[L]}</h3><table><tr><th>#</th><th>Key</th><th>Bytes</th><th>Status</th><th>Assigned to</th></tr>${rows}</table>`;
+      sum+=`=== ${names[L]} ===\nAssigned OK: ${okc}\nEMPTY (unassigned) ${empty.length}: ${empty.join("  ")||"none"}\nWRONG/UNKNOWN ${bad.length}: ${bad.join("  ")||"none"}\n\n`;
+    });
+    document.querySelector("#tbl").innerHTML=html;
+    out.value=sum+"Note: on the Fn layer, EMPTY normally means 'just use the normal key', which is fine.";
+    try{await dev.close()}catch(e){}
+  }catch(e){out.value="ERROR: "+e.message}
+};
+</script></body></html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>MK1300 V2 Fn layer fix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:system-ui,sans-serif;background:#10131a;color:#e8ecf4;max-width:760px;margin:26px auto;padding:0 16px;line-height:1.5}
+.box{background:#1a1f2b;border:1px solid #2c3446;border-radius:10px;padding:16px;margin:14px 0}
+button{font-size:17px;padding:11px 20px;border:0;border-radius:8px;background:#7f6cff;color:#fff;cursor:pointer;margin:4px 8px 4px 0}
+button:disabled{opacity:.4;cursor:default}
+textarea{width:100%;height:340px;background:#0b0e14;color:#9dffb8;border:1px solid #2c3446;border-radius:8px;padding:10px;font-family:monospace;font-size:13px;box-sizing:border-box}
+</style></head><body>
+<h1>MK1300 V2 Fn layer fix</h1>
+<div class="box">
+<p>Writes your Fn shortcuts to the Fn layer (layer 1):<br>
+Fn+; speed down, Fn+' speed up, Fn+[ brightness down, Fn+] brightness up, Fn+Enter LED off,<br>
+Fn+Y PrtSc, Fn+U ScrLk, Fn+I Pause, Fn+H Ins, Fn+J Home, Fn+K PgUp, Fn+D PgDn (Fn+N Del and Fn+M End are already right).<br>
+It also clears the broken leftovers on Fn+Q W E R T O P A S. <b>Fn+W (WASD as arrows) is left empty</b>, because I couldn't find its function code.</p>
+<p>Use Chrome or Edge. Click once and wait for "Done".</p>
+<button id="go">Write Fn shortcuts</button><button id="copy">Copy log</button>
+</div>
+<textarea id="out" readonly></textarea>
+<script>
+const L=1;
+const K=(h)=>[32,0,h,0], F=(c)=>[31,c,0,0], EMPTY=[0,0,0,0];
+const PLAN=[
+ [40,";  -> Speed down",F(6)],
+ [41,"'  -> Speed up",F(5)],
+ [26,"[  -> Brightness down",F(2)],
+ [27,"]  -> Brightness up",F(1)],
+ [43,"Enter -> LED off",F(0)],
+ [21,"Y -> PrtSc",K(70)],
+ [22,"U -> ScrLk",K(71)],
+ [23,"I -> Pause",K(72)],
+ [36,"H -> Insert",K(73)],
+ [37,"J -> Home",K(74)],
+ [38,"K -> PageUp",K(75)],
+ [33,"D -> PageDown",K(78)],
+ [16,"Q -> cleared",EMPTY],[17,"W -> cleared",EMPTY],[18,"E -> cleared",EMPTY],[19,"R -> cleared",EMPTY],
+ [20,"T -> cleared",EMPTY],[24,"O -> cleared",EMPTY],[25,"P -> cleared",EMPTY],
+ [31,"A -> cleared",EMPTY],[32,"S -> cleared",EMPTY]
+];
+const out=document.querySelector("#out"),go=document.querySelector("#go");
+const log=m=>{out.value+=m+"\n";out.scrollTop=out.scrollHeight};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let dev=null;
+document.querySelector("#copy").onclick=async()=>{try{await navigator.clipboard.writeText(out.value)}catch(e){out.select();document.execCommand("copy")}};
+function xfer(p){return new Promise(async(res,rej)=>{
+  const r=new Uint8Array(64);r[0]=6;p.forEach((v,i)=>{r[1+i]=v});let done=false;
+  const h=e=>{if(done)return;done=true;dev.removeEventListener("inputreport",h);res(new Uint8Array(e.data.buffer))};
+  dev.addEventListener("inputreport",h);
+  try{await dev.sendReport(0,r)}catch(err){dev.removeEventListener("inputreport",h);return rej(err)}
+  setTimeout(()=>{if(!done){done=true;dev.removeEventListener("inputreport",h);rej(new Error("no reply"))}},1500);
+});}
+async function readLayer(l){const d=new Uint8Array(320);
+  for(let e=0;e<6;e++){const off=56*e;const rep=await xfer([8,58,off&255,off>>8&255,0,l]);
+    for(let i=0;i<56&&off+i<d.length;i++)d[off+i]=rep[8+i]||0;}return d;}
+go.onclick=async()=>{
+  out.value="";go.disabled=true;
+  try{
+    if(!navigator.hid)throw new Error("Use Chrome or Edge");
+    const d=await navigator.hid.requestDevice({filters:[{vendorId:0x36AE,usagePage:0xFF00,usage:0x02}]});
+    if(!d.length)throw new Error("No device selected");
+    dev=d[0];if(!dev.opened)await dev.open();
+    const base=await readLayer(0), fn=await readLayer(L);
+    const g=(a,i)=>Array.from(a.slice(4*i,4*i+4)).join();
+    if(g(base,33)!=="32,0,7,0"||g(fn,0)!=="32,0,53,0")throw new Error("Safety check failed (D="+g(base,33)+", Fn+Esc="+g(fn,0)+"). Not writing.");
+    for(const [idx,label,rec] of PLAN){
+      const off=4*idx;
+      log(label+"   (was "+g(fn,idx)+")");
+      await xfer([16,7,off&255,off>>8&255,0,L,0,rec[0],rec[1],rec[2],rec[3]]);
+      await sleep(100);
+    }
+    const after=await readLayer(L);
+    let ok=true;
+    for(const [idx,label,rec] of PLAN){if(g(after,idx)!==rec.join()){ok=false;log("MISMATCH "+label+": "+g(after,idx))}}
+    log(ok?"\nVerified OK. Done. UNPLUG the keyboard, wait 5 s, plug it back in, and test.":"\nSome keys did not take. Copy log and send it to Claude.");
+    try{await dev.close()}catch(e){}
+  }catch(e){log("ERROR: "+e.message)}
+  go.disabled=false;
+};
+</script></body></html>
