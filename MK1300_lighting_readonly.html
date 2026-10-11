@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>MK1300 V2 lighting fields</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:system-ui,sans-serif;background:#10131a;color:#e8ecf4;max-width:860px;margin:26px auto;padding:0 16px;line-height:1.5}
+.box{background:#1a1f2b;border:1px solid #2c3446;border-radius:10px;padding:16px;margin:14px 0}
+button{font-size:17px;padding:11px 20px;border:0;border-radius:8px;background:#7f6cff;color:#fff;cursor:pointer;margin:4px 8px 4px 0}
+textarea{width:100%;height:260px;background:#0b0e14;color:#9dffb8;border:1px solid #2c3446;border-radius:8px;padding:10px;font-family:monospace;font-size:13px;box-sizing:border-box}
+table{border-collapse:collapse;font-size:13px;margin:8px 0}td,th{border:1px solid #2c3446;padding:3px 8px;text-align:left}
+.sw{display:inline-block;width:46px;height:20px;border:1px solid #555;border-radius:4px;vertical-align:middle}
+.cur{background:#2b3350}
+</style></head><body>
+<h1>MK1300 V2 lighting fields (read only)</h1>
+<div class="box"><p>Shows the lighting state, the list of lighting modes and which settings each one supports, and the color stored for every key. Writes nothing. Use Chrome or Edge.</p>
+<button id="go">Connect and read lighting</button><button id="copy">Copy log</button></div>
+<div id="state"></div><div id="modes"></div><div id="colors"></div>
+<textarea id="out" readonly placeholder="Log shows here..."></textarea>
+<script>
+const KEYS=[[0, "Esc", 32, 41], [1, "1", 32, 30], [2, "2", 32, 31], [3, "3", 32, 32], [4, "4", 32, 33], [5, "5", 32, 34], [6, "6", 32, 35], [7, "7", 32, 36], [8, "8", 32, 37], [9, "9", 32, 38], [10, "0", 32, 39], [11, "?\n* \\", 32, 45], [12, "_\n- ", 32, 46], [13, "Back", 32, 42], [15, "Tab", 32, 43], [16, "Q", 32, 20], [17, "W", 32, 26], [18, "E", 32, 8], [19, "R", 32, 21], [20, "T", 32, 23], [21, "Y", 32, 28], [22, "U", 32, 24], [23, "I", 32, 12], [24, "O", 32, 18], [25, "P", 32, 19], [26, "[  {", 32, 47], [27, "}  ]", 32, 48], [28, "\\", 32, 49], [30, "Caps", 32, 57], [31, "A", 32, 4], [32, "S", 32, 22], [33, "D", 32, 7], [34, "F", 32, 9], [35, "G", 32, 10], [36, "H", 32, 11], [37, "J", 32, 13], [38, "K", 32, 14], [39, "L", 32, 15], [40, ";", 32, 51], [41, "'", 32, 52], [43, "Enter", 32, 40], [45, "Shift", 32, 225], [47, "Z", 32, 29], [48, "X", 32, 27], [49, "C", 32, 6], [50, "V", 32, 25], [51, "B", 32, 5], [52, "N", 32, 17], [53, "M", 32, 16], [54, ",  <", 32, 54], [55, ".  >", 32, 55], [56, "/  ?", 32, 56], [58, "Shift", 32, 229], [60, "Ctrl", 32, 256], [61, "Win", 32, 2048], [62, "Alt", 32, 1024], [66, "Space", 32, 44], [70, "Alt Gr", 32, 230], [71, "Fn", 32, 255], [72, "Lighting", 31, 3], [73, "Ctrl", 32, 228]];
+const MODES=[[0,"Off",0,0,0,0,0],[1,"Solid",1,0,0,1,1],[2,"Breathing",1,1,0,1,1],[3,"Rotate",1,1,0,1,1],[4,"Spectrum cycle",1,1,0,1,1],[5,"Left-right flow",1,1,1,1,1],[6,"Bloom",1,1,1,1,1],[7,"Up-down flow",1,1,2,1,1],[8,"Light on press",1,1,0,1,1],[9,"Sine wave",1,1,0,1,1],[10,"Taiji",1,1,0,1,1],[11,"Ripple (fade)",1,1,0,1,1],[12,"Shuttle",1,1,0,1,1],[13,"Raindrop",1,1,0,1,1],[14,"Meteor",1,1,1,1,1],[15,"Ripple (light)",1,1,0,1,1],[16,"Nine-grid",1,1,0,1,1],[17,"Tide",1,1,0,1,1],[18,"Snake",1,1,0,1,1],[19,"Single-row on press",1,1,0,1,1]];
+const out=document.querySelector("#out"),log=m=>{out.value+=m+"\n"};
+let dev=null;
+document.querySelector("#copy").onclick=async()=>{try{await navigator.clipboard.writeText(out.value)}catch(e){out.select();document.execCommand("copy")}};
+function xfer(p){return new Promise(async(res,rej)=>{
+  const r=new Uint8Array(64);r[0]=6;p.forEach((v,i)=>{r[1+i]=v});let done=false;
+  const h=e=>{if(done)return;done=true;dev.removeEventListener("inputreport",h);res(new Uint8Array(e.data.buffer))};
+  dev.addEventListener("inputreport",h);
+  try{await dev.sendReport(0,r)}catch(err){dev.removeEventListener("inputreport",h);return rej(err)}
+  setTimeout(()=>{if(!done){done=true;dev.removeEventListener("inputreport",h);rej(new Error("no reply"))}},1500);
+});}
+const yn=v=>v?"yes":"no";
+document.querySelector("#go").onclick=async()=>{
+  out.value="";
+  try{
+    if(!navigator.hid)throw new Error("Use Chrome or Edge");
+    const d=await navigator.hid.requestDevice({filters:[{vendorId:0x36AE,usagePage:0xFF00,usage:0x02}]});
+    if(!d.length)throw new Error("No device selected");
+    dev=d[0];if(!dev.opened)await dev.open();
+    // current lighting state
+    const e=await xfer([10]);const a=e.slice(5,16);
+    const cur={type:a[0],mode:a[2],brightness:a[3],speed:a[4],direction:a[5],color:a[6],single:a[7],h:Math.floor(360*a[8]/255),s:Math.floor(100*a[9]/255),v:Math.floor(100*a[10]/255)};
+    const mm=MODES.find(m=>m[0]==cur.mode);
+    log("Current mode: "+cur.mode+" ("+(mm?mm[1]:"unknown")+")");
+    log("brightness "+cur.brightness+" | speed "+cur.speed+" | direction "+cur.direction+" | color slot "+cur.color+" | single-color index "+cur.single);
+    log("HSV color: h "+cur.h+"  s "+cur.s+"  v "+cur.v+"   (type "+cur.type+")");
+    document.querySelector("#state").innerHTML=`<div class="box"><b>Current:</b> ${mm?mm[1]:"mode "+cur.mode} &nbsp; brightness ${cur.brightness}, speed ${cur.speed}, direction ${cur.direction}, color slot ${cur.color}, HSV ${cur.h}/${cur.s}/${cur.v}</div>`;
+    let t="<h3>Lighting modes and what each supports</h3><table><tr><th>#</th><th>Mode</th><th>Brightness</th><th>Speed</th><th>Direction</th><th>Color</th><th>Palette</th></tr>";
+    for(const m of MODES){t+=`<tr class="${m[0]==cur.mode?"cur":""}"><td>${m[0]}</td><td>${m[1]}</td><td>${yn(m[2])}</td><td>${yn(m[3])}</td><td>${m[4]?"yes ("+m[4]+")":"no"}</td><td>${yn(m[5])}</td><td>${yn(m[6])}</td></tr>`}
+    document.querySelector("#modes").innerHTML=t+"</table>";
+    // per-key colors
+    const buf=new Uint8Array(3*112);
+    for(let c=0;c<6;c++){const off=56*c;const rep=await xfer([19,58,off&255,off>>8&255]);
+      for(let i=0;i<56&&off+i<buf.length;i++)buf[off+i]=rep[8+i]||0;}
+    let h="<h3>Stored color per key (position = key number, assumed)</h3><table><tr><th>#</th><th>Key</th><th>Color</th><th>R,G,B</th></tr>";
+    let nz=0;
+    for(const [idx,name] of KEYS){
+      const r=buf[3*idx],g=buf[3*idx+1],b=buf[3*idx+2];if(r||g||b)nz++;
+      h+=`<tr><td>${idx}</td><td>${name.replace(/\n/g," ").replace(/</g,"&lt;")}</td><td><span class="sw" style="background:rgb(${r},${g},${b})"></span></td><td>${r},${g},${b}</td></tr>`;
+    }
+    document.querySelector("#colors").innerHTML=h+"</table>";
+    log("Keys with a non-black stored color: "+nz+" of "+KEYS.length);
+    log("Raw color bytes 0-47: "+Array.from(buf.slice(0,48)).join(","));
+    log("\nDone. Copy log and paste it to Claude.");
+    try{await dev.close()}catch(x){}
+  }catch(x){log("ERROR: "+x.message)}
+};
+</script></body></html>

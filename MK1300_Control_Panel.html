@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>MK1300 V2 Control Panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#0d1017;--card:#161b26;--line:#272f42;--text:#e8ecf4;--mut:#8a94ab;--acc:#7f6cff;--good:#2fd28d;--bad:#ff5d73}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:20px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:99px;background:var(--card);font-size:13px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad)}.dot.on{background:var(--good)}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:10px 16px;background:var(--acc);color:#fff;cursor:pointer}
+button.sec{background:#222a3d;border:1px solid var(--line);color:var(--text)}button:disabled{opacity:.45;cursor:default}
+.tabs{display:flex;gap:6px;margin:12px 0}.tab{background:#1b2232;border:1px solid var(--line);color:var(--mut)}.tab.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h3{margin:0 0 12px;font-size:14px}
+.modes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.mode{padding:10px;border-radius:10px;border:1px solid var(--line);background:#1b2232;color:var(--text);text-align:left;font-weight:600;font-size:13px}
+.mode.on{border-color:var(--acc);outline:2px solid var(--acc)}
+.row{display:flex;align-items:center;gap:12px;margin:10px 0;flex-wrap:wrap}.row label{width:90px;color:var(--mut);font-size:13px}
+input[type=range]{flex:1;min-width:160px}input[type=color]{width:70px;height:42px;border:0;background:none;cursor:pointer}
+.sw{display:flex;gap:6px;flex-wrap:wrap}.sw i{width:28px;height:28px;border-radius:8px;border:2px solid #0006;cursor:pointer}
+select{background:#1b2232;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+.kb{position:relative;margin:auto;max-width:900px}
+.key{position:absolute;border:1px solid var(--line);border-radius:7px;background:#1d2434;color:var(--text);font-size:11px;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer;padding:2px;line-height:1.1}
+.key:hover{border-color:var(--acc)}.key.sel{outline:2px solid var(--acc);background:#2a2f55}.key.mod{background:#262035}
+.note{color:var(--mut);font-size:12px;line-height:1.5}.warn{color:#ffcc66}
+#log{height:110px;overflow:auto;background:#0a0d13;border:1px solid var(--line);border-radius:10px;padding:8px;font:12px/1.5 monospace;color:#9dffb8;white-space:pre-wrap}
+.hide{display:none}
+</style></head><body><div class="wrap">
+<div class="top"><div><h1>MK1300 V2 Control Panel</h1><div class="sub">Colors, effects and key remapping without the official software</div></div>
+<div><span class="pill"><span class="dot" id="dot"></span><span id="st">Not connected</span></span> <button id="conn">Connect keyboard</button></div></div>
+<div class="tabs"><button class="tab on" data-t="light">Lighting</button><button class="tab" data-t="keys">Keys</button><button class="tab" data-t="backup">Backup</button></div>
+
+<div id="t-light">
+ <div class="card"><h3>Effect</h3><div class="modes" id="modes"></div></div>
+ <div class="card"><h3>Color and speed</h3>
+  <div class="row"><label>Color</label><input type="color" id="col" value="#ff2bd6"><div class="sw" id="sw"></div></div>
+  <div class="row"><label>Brightness</label><input type="range" id="br" min="0" max="4" value="4"><b id="brv">4</b></div>
+  <div class="row"><label>Speed</label><input type="range" id="sp" min="0" max="4" value="2"><b id="spv">2</b></div>
+  <div class="row"><label>Direction</label><select id="dir"><option>0</option><option>1</option><option>2</option><option>3</option></select><span class="note">only used by flow, bloom and meteor</span></div>
+  <div class="row"><button id="apply">Apply</button><button class="sec" id="rainbow">Use rainbow / palette colors</button><label style="width:auto"><input type="checkbox" id="live" checked> apply while I change things</label></div>
+  <div class="note">Spectrum cycle is rainbow only and ignores a custom color. Per-key colors are not supported by this keyboard's firmware.</div>
+ </div></div>
+
+<div id="t-keys" class="hide">
+ <div class="card"><h3>Remap a key</h3>
+  <div class="row"><label>Layer</label><select id="layer"><option value="0">Base layer</option><option value="1">Fn layer (Fn + key)</option></select><button class="sec" id="reload">Read keys</button></div>
+  <div class="kb" id="kb"></div>
+  <div class="row" style="margin-top:14px"><label>Selected</label><b id="selname">none</b><span class="note" id="selcur"></span></div>
+  <div class="row"><label>Set to</label><select id="what"></select><button id="setkey" disabled>Write key</button></div>
+  <div class="note warn">Changes apply right away and survive unplugging. They are written to the live copy only: a keyboard reset (Fn+Space) brings back the stored default. To undo a mistake, use <b>Backup &gt; Restore</b> or the FINAL fix page.</div>
+ </div></div>
+
+<div id="t-backup" class="hide">
+ <div class="card"><h3>Backup and restore your keys</h3>
+  <div class="row"><button id="export">Save backup file</button><input type="file" id="imp" accept=".json"><button class="sec" id="restore" disabled>Restore from file</button></div>
+  <div class="note">The backup holds every key of the Base layer and the Fn layer. Restore only writes the keys that are different.</div>
+ </div></div>
+
+<div class="card"><h3>Log</h3><div id="log"></div></div>
+</div>
+<script>
+const LAYOUT=[{"i": 0, "n": "Esc", "x": 0, "y": 0, "w": 1, "h": 1}, {"i": 1, "n": "1", "x": 1, "y": 0, "w": 1, "h": 1}, {"i": 2, "n": "2", "x": 2, "y": 0, "w": 1, "h": 1}, {"i": 3, "n": "3", "x": 3, "y": 0, "w": 1, "h": 1}, {"i": 4, "n": "4", "x": 4, "y": 0, "w": 1, "h": 1}, {"i": 5, "n": "5", "x": 5, "y": 0, "w": 1, "h": 1}, {"i": 6, "n": "6", "x": 6, "y": 0, "w": 1, "h": 1}, {"i": 7, "n": "7", "x": 7, "y": 0, "w": 1, "h": 1}, {"i": 8, "n": "8", "x": 8, "y": 0, "w": 1, "h": 1}, {"i": 9, "n": "9", "x": 9, "y": 0, "w": 1, "h": 1}, {"i": 10, "n": "0", "x": 10, "y": 0, "w": 1, "h": 1}, {"i": 11, "n": "? / * \\", "x": 11, "y": 0, "w": 1, "h": 1}, {"i": 12, "n": "_ / - ", "x": 12, "y": 0, "w": 1, "h": 1}, {"i": 13, "n": "Back", "x": 13, "y": 0, "w": 2, "h": 1}, {"i": 15, "n": "Tab", "x": 0, "y": 1, "w": 1.5, "h": 1}, {"i": 16, "n": "Q", "x": 1.5, "y": 1, "w": 1, "h": 1}, {"i": 17, "n": "W", "x": 2.5, "y": 1, "w": 1, "h": 1}, {"i": 18, "n": "E", "x": 3.5, "y": 1, "w": 1, "h": 1}, {"i": 19, "n": "R", "x": 4.5, "y": 1, "w": 1, "h": 1}, {"i": 20, "n": "T", "x": 5.5, "y": 1, "w": 1, "h": 1}, {"i": 21, "n": "Y", "x": 6.5, "y": 1, "w": 1, "h": 1}, {"i": 22, "n": "U", "x": 7.5, "y": 1, "w": 1, "h": 1}, {"i": 23, "n": "I", "x": 8.5, "y": 1, "w": 1, "h": 1}, {"i": 24, "n": "O", "x": 9.5, "y": 1, "w": 1, "h": 1}, {"i": 25, "n": "P", "x": 10.5, "y": 1, "w": 1, "h": 1}, {"i": 26, "n": "[  {", "x": 11.5, "y": 1, "w": 1, "h": 1}, {"i": 27, "n": "}  ]", "x": 12.5, "y": 1, "w": 1, "h": 1}, {"i": 28, "n": "\\", "x": 13.5, "y": 1, "w": 1.5, "h": 1}, {"i": 30, "n": "Caps", "x": 0, "y": 2, "w": 1.75, "h": 1}, {"i": 31, "n": "A", "x": 1.75, "y": 2, "w": 1, "h": 1}, {"i": 32, "n": "S", "x": 2.75, "y": 2, "w": 1, "h": 1}, {"i": 33, "n": "D", "x": 3.75, "y": 2, "w": 1, "h": 1}, {"i": 34, "n": "F", "x": 4.75, "y": 2, "w": 1, "h": 1}, {"i": 35, "n": "G", "x": 5.75, "y": 2, "w": 1, "h": 1}, {"i": 36, "n": "H", "x": 6.75, "y": 2, "w": 1, "h": 1}, {"i": 37, "n": "J", "x": 7.75, "y": 2, "w": 1, "h": 1}, {"i": 38, "n": "K", "x": 8.75, "y": 2, "w": 1, "h": 1}, {"i": 39, "n": "L", "x": 9.75, "y": 2, "w": 1, "h": 1}, {"i": 40, "n": ";", "x": 10.75, "y": 2, "w": 1, "h": 1}, {"i": 41, "n": "'", "x": 11.75, "y": 2, "w": 1, "h": 1}, {"i": 43, "n": "Enter", "x": 12.75, "y": 2, "w": 2.25, "h": 1}, {"i": 45, "n": "Shift", "x": 0, "y": 3, "w": 2.25, "h": 1}, {"i": 47, "n": "Z", "x": 2.25, "y": 3, "w": 1, "h": 1}, {"i": 48, "n": "X", "x": 3.25, "y": 3, "w": 1, "h": 1}, {"i": 49, "n": "C", "x": 4.25, "y": 3, "w": 1, "h": 1}, {"i": 50, "n": "V", "x": 5.25, "y": 3, "w": 1, "h": 1}, {"i": 51, "n": "B", "x": 6.25, "y": 3, "w": 1, "h": 1}, {"i": 52, "n": "N", "x": 7.25, "y": 3, "w": 1, "h": 1}, {"i": 53, "n": "M", "x": 8.25, "y": 3, "w": 1, "h": 1}, {"i": 54, "n": ",  <", "x": 9.25, "y": 3, "w": 1, "h": 1}, {"i": 55, "n": ".  >", "x": 10.25, "y": 3, "w": 1, "h": 1}, {"i": 56, "n": "/  ?", "x": 11.25, "y": 3, "w": 1, "h": 1}, {"i": 58, "n": "Shift", "x": 12.25, "y": 3, "w": 2.75, "h": 1}, {"i": 60, "n": "Ctrl", "x": 0, "y": 4, "w": 1.25, "h": 1}, {"i": 61, "n": "Win", "x": 1.25, "y": 4, "w": 1.25, "h": 1}, {"i": 62, "n": "Alt", "x": 2.5, "y": 4, "w": 1.25, "h": 1}, {"i": 66, "n": "Space", "x": 3.75, "y": 4, "w": 6.25, "h": 1}, {"i": 70, "n": "Alt Gr", "x": 10, "y": 4, "w": 1.25, "h": 1}, {"i": 71, "n": "Fn", "x": 11.25, "y": 4, "w": 1.25, "h": 1}, {"i": 72, "n": "Lighting", "x": 12.5, "y": 4, "w": 1.25, "h": 1}, {"i": 73, "n": "Ctrl", "x": 13.75, "y": 4, "w": 1.25, "h": 1}];
+const MODES=["Off","Solid","Breathing","Rotate","Spectrum cycle","Left-right flow","Bloom","Up-down flow","Light on press","Sine wave","Taiji","Ripple (fade)","Shuttle","Raindrop","Meteor","Ripple (light)","Nine-grid","Tide","Snake","Single-row on press"];
+const logEl=document.querySelector("#log"),log=m=>{logEl.textContent+=m+"\n";logEl.scrollTop=logEl.scrollHeight};
+const $=s=>document.querySelector(s),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let dev=null,busy=Promise.resolve();
+function xfer(p){ // serialised so two requests never overlap; one failure does not block later ones
+  const task=()=>new Promise(async(res,rej)=>{
+    const r=new Uint8Array(64);r[0]=6;p.forEach((v,i)=>{r[1+i]=v});let done=false;
+    const h=e=>{if(done)return;done=true;dev.removeEventListener("inputreport",h);res(new Uint8Array(e.data.buffer))};
+    dev.addEventListener("inputreport",h);
+    try{await dev.sendReport(0,r)}catch(err){dev.removeEventListener("inputreport",h);return rej(err)}
+    setTimeout(()=>{if(!done){done=true;dev.removeEventListener("inputreport",h);rej(new Error("no reply"))}},1500);
+  });
+  const run=busy.then(task);busy=run.catch(()=>{});return run;
+}
+// ---------- connect ----------
+$("#conn").onclick=async()=>{
+  try{
+    if(!navigator.hid)throw new Error("Use Chrome or Edge");
+    const d=await navigator.hid.requestDevice({filters:[{vendorId:0x36AE,usagePage:0xFF00,usage:0x02}]});
+    if(!d.length)throw new Error("No device selected");
+    dev=d[0];if(!dev.opened)await dev.open();
+    $("#dot").classList.add("on");$("#st").textContent="Connected ("+dev.productName+")";
+    const a=await readLight();setUI(a);log("Connected. Current effect: "+MODES[a[2]]);
+    loadKeys();
+  }catch(e){log("ERROR: "+e.message)}
+};
+// ---------- lighting ----------
+let mode=4;
+MODES.forEach((n,i)=>{const b=document.createElement("button");b.className="mode";b.textContent=i+"  "+n;b.onclick=()=>{mode=i;markMode();if($("#live").checked)applyLight(true)};b.id="m"+i;$("#modes").appendChild(b)});
+function markMode(){MODES.forEach((_,i)=>$("#m"+i).classList.toggle("on",i==mode))}
+["#fd5ba6","#ff2bd6","#ff3b30","#ff9500","#ffd60a","#34c759","#00e5ff","#0a84ff","#7f6cff","#ffffff"].forEach(c=>{const i=document.createElement("i");i.style.background=c;i.onclick=()=>{$("#col").value=c;if($("#live").checked)applyLight(true)};$("#sw").appendChild(i)});
+$("#br").oninput=()=>{$("#brv").textContent=$("#br").value;sched()};$("#sp").oninput=()=>{$("#spv").textContent=$("#sp").value;sched()};
+$("#col").oninput=sched;$("#dir").onchange=sched;
+let tm=null;function sched(){if(!$("#live").checked||!dev)return;clearTimeout(tm);tm=setTimeout(()=>applyLight(true),180)}
+async function readLight(){return Array.from((await xfer([10])).slice(5,16))}
+function setUI(a){mode=a[2];markMode();$("#br").value=a[3];$("#brv").textContent=a[3];$("#sp").value=a[4];$("#spv").textContent=a[4];$("#dir").value=Math.min(a[5],3)}
+function rgb2hsv(r,g,b){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;if(d){if(mx==r)h=((g-b)/d)%6;else if(mx==g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360}return[h,mx?d/mx:0,mx]}
+async function applyLight(useColor){
+  if(!dev){log("Connect the keyboard first.");return}
+  try{
+    const a=await readLight();
+    a[2]=mode;a[3]=+$("#br").value;a[4]=+$("#sp").value;a[5]=+$("#dir").value;
+    if(useColor&&mode!=0){const h=$("#col").value,[H,S,V]=rgb2hsv(parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16));a[6]=1;a[8]=Math.floor(H/360*255);a[9]=Math.floor(S*255);a[10]=Math.floor(V*255)}else a[6]=0;
+    await xfer([11,a.length,0,0,...a]);log("Applied: "+MODES[mode]+(a[6]?", color "+$("#col").value:", palette")+", brightness "+a[3]+", speed "+a[4]);
+  }catch(e){log("ERROR: "+e.message)}
+}
+$("#apply").onclick=()=>applyLight(true);$("#rainbow").onclick=()=>applyLight(false);
+// ---------- keys ----------
+const HID={};"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((c,i)=>HID[4+i]=c);"1234567890".split("").forEach((c,i)=>HID[30+i]=c);
+Object.assign(HID,{40:"Enter",41:"Esc",42:"Backspace",43:"Tab",44:"Space",45:"- _",46:"= +",47:"[ {",48:"] }",49:"\\ |",51:"; :",52:"' \"",53:"` ~",54:", <",55:". >",56:"/ ?",57:"Caps Lock",70:"PrtSc",71:"ScrLk",72:"Pause",73:"Insert",74:"Home",75:"PgUp",76:"Delete",77:"End",78:"PgDn",79:"Right",80:"Left",81:"Down",82:"Up",101:"Menu",255:"Fn"});
+for(let i=0;i<12;i++)HID[58+i]="F"+(i+1);
+const MODS=[[1,"Left Ctrl"],[2,"Left Shift"],[4,"Left Alt"],[8,"Left Win"],[16,"Right Ctrl"],[32,"Right Shift"],[64,"Right Alt (AltGr)"],[128,"Right Win"]];
+const FN={0:"Light on/off",1:"Brightness +",2:"Brightness -",3:"Next effect",4:"Next color",5:"Speed +",6:"Speed -",7:"Win lock",16:"Reset keyboard",36:"WASD as arrows"};
+const opts=[];Object.keys(HID).map(Number).sort((a,b)=>a-b).forEach(k=>opts.push({l:HID[k],v:[32,0,k,0]}));
+MODS.forEach(m=>opts.push({l:m[1],v:[32,m[0],0,0]}));Object.keys(FN).map(Number).forEach(k=>opts.push({l:"Function: "+FN[k],v:[31,k,0,0]}));
+opts.push({l:"Empty (do nothing / normal key on Fn layer)",v:[0,0,0,0]});
+opts.forEach((o,i)=>{const e=document.createElement("option");e.value=i;e.textContent=o.l;$("#what").appendChild(e)});
+function describe(f){
+  if(f.every(v=>v==0))return"empty";
+  if(f[0]==32&&f[1]==0&&f[3]==0&&HID[f[2]])return HID[f[2]];
+  if(f[0]==32&&f[2]==0&&f[3]==0){const m=MODS.filter(x=>f[1]&x[0]).map(x=>x[1]);if(m.length)return m.join("+")}
+  if(f[0]==31)return"fn: "+(FN[f[1]]||f[1]);
+  return"other ("+f.join(",")+")";
+}
+let table=new Uint8Array(320),sel=null;
+async function readLayer(l){const d=new Uint8Array(320);for(let e=0;e<6;e++){const off=56*e;const rep=await xfer([8,58,off&255,off>>8&255,0,l]);for(let i=0;i<56&&off+i<d.length;i++)d[off+i]=rep[8+i]||0}return d}
+const SC=48;
+function drawKeys(){
+  const kb=$("#kb");kb.innerHTML="";kb.style.height=(5*SC+4)+"px";
+  LAYOUT.forEach(k=>{
+    const b=document.createElement("div");b.className="key";
+    b.style.left=(k.x*SC)+"px";b.style.top=(k.y*SC)+"px";b.style.width=(k.w*SC-4)+"px";b.style.height=(k.h*SC-4)+"px";
+    const f=Array.from(table.slice(4*k.i,4*k.i+4));b.textContent=describe(f);if(f[0]==32&&f[2]==0)b.classList.add("mod");
+    b.onclick=()=>{sel=k;document.querySelectorAll(".key").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");$("#selname").textContent=k.n;$("#selcur").textContent="currently: "+describe(f);$("#setkey").disabled=!dev};
+    kb.appendChild(b);
+  });
+}
+async function loadKeys(){if(!dev)return;try{table=await readLayer(+$("#layer").value);drawKeys();log("Read "+($("#layer").value=="0"?"base":"Fn")+" layer.")}catch(e){log("ERROR: "+e.message)}}
+$("#layer").onchange=loadKeys;$("#reload").onclick=loadKeys;
+$("#setkey").onclick=async()=>{
+  if(!sel||!dev)return;
+  const v=opts[+$("#what").value].v,L=+$("#layer").value,o=4*sel.i;
+  if(L==0&&sel.i==71&&!(v[0]==32&&v[2]==255)&&!confirm("This is the Fn key. Changing it can lock you out of the Fn layer. Continue?"))return;
+  try{await xfer([16,7,o&255,o>>8&255,0,L,0,v[0],v[1],v[2],v[3]]);await sleep(80);log("Wrote "+sel.n+" = "+opts[+$("#what").value].l+" (layer "+L+")");await loadKeys()}catch(e){log("ERROR: "+e.message)}
+};
+// ---------- backup ----------
+$("#export").onclick=async()=>{
+  if(!dev){log("Connect first.");return}
+  try{const l0=await readLayer(0),l1=await readLayer(1);
+    const data={tool:"mk1300-control-panel",pid:"fead",layer0:Array.from(l0.slice(0,300)),layer1:Array.from(l1.slice(0,300))};
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));
+    a.download="mk1300-keys-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();log("Backup saved.");
+  }catch(e){log("ERROR: "+e.message)}
+};
+let backup=null;
+$("#imp").onchange=async e=>{try{backup=JSON.parse(await e.target.files[0].text());if(backup.tool!=="mk1300-control-panel"||backup.layer0.length!=300||backup.layer1.length!=300)throw new Error("not a valid backup");$("#restore").disabled=!dev;log("Backup file loaded.")}catch(x){backup=null;log("ERROR: "+x.message)}};
+$("#restore").onclick=async()=>{
+  if(!dev||!backup)return;
+  try{let n=0;
+    for(const L of [0,1]){const cur=await readLayer(L),want=backup["layer"+L];
+      for(let i=0;i<75;i++){const c=Array.from(cur.slice(4*i,4*i+4)),w=want.slice(4*i,4*i+4);
+        if(c.join()!==w.join()){const o=4*i;await xfer([16,7,o&255,o>>8&255,0,L,0,w[0],w[1],w[2],w[3]]);await sleep(80);n++}}}
+    log("Restored "+n+" key(s) from the backup.");loadKeys();
+  }catch(e){log("ERROR: "+e.message)}
+};
+// ---------- tabs ----------
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x==b));["light","keys","backup"].forEach(t=>$("#t-"+t).classList.toggle("hide",t!==b.dataset.t))});
+markMode();
+</script></body></html>
